@@ -108,16 +108,49 @@ public extension NSCollectionView {
         using stagedChangeset: StagedChangeset<C>,
         interrupt: ((Changeset<C>) -> Bool)? = nil,
         setData: (C) -> Void
-        ) {
+    ) {
+        reload(
+            using: stagedChangeset,
+            interrupt: interrupt,
+            setData: setData,
+            completion: nil
+        )
+    }
+
+    /// Applies multiple animated updates in stages using `StagedChangeset`.
+    ///
+    /// - Note: There are combination of changes that crash when applied simultaneously in `performBatchUpdates`.
+    ///         Assumes that `StagedChangeset` has a minimum staged changesets to avoid it.
+    ///         The data of the data-source needs to be updated synchronously before `performBatchUpdates` in every stages.
+    ///
+    /// - Parameters:
+    ///   - stagedChangeset: A staged set of changes.
+    ///   - interrupt: A closure that takes an changeset as its argument and returns `true` if the animated
+    ///                updates should be stopped and performed reloadData. Default is nil.
+    ///   - setData: A closure that takes the collection as a parameter.
+    ///              The collection should be set to data-source of NSCollectionView.
+    ///   - completion: A completion handler block to execute when all of the operations are finished.
+    ///                 This block has no return value and takes the parameter indicating whether
+    ///                 the animations completed successfully or were interrupted for any reason.
+    func reload<C>(
+        using stagedChangeset: StagedChangeset<C>,
+        interrupt: ((Changeset<C>) -> Bool)? = nil,
+        setData: (C) -> Void,
+        completion: ((Bool) -> Void)?
+    ) {
         if case .none = window, let data = stagedChangeset.last?.data {
             setData(data)
-            return reloadData()
+            reloadData()
+            completion?(true)
+            return
         }
 
         for changeset in stagedChangeset {
             if let interrupt = interrupt, interrupt(changeset), let data = stagedChangeset.last?.data {
                 setData(data)
-                return reloadData()
+                reloadData()
+                completion?(true)
+                return
             }
 
             animator().performBatchUpdates({
@@ -138,7 +171,7 @@ public extension NSCollectionView {
                 for (source, target) in changeset.elementMoved {
                     moveItem(at: IndexPath(item: source.element, section: source.section), to: IndexPath(item: target.element, section: target.section))
                 }
-            })
+            }, completionHandler: completion)
         }
     }
 }
